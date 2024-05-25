@@ -9,9 +9,17 @@ from config.polish_name import PolishNameConfig
 
 EPOCH = 1_000
 EPOCH_SEPARATOR = 100
+MAIN_WEIGHT = 1.0
+NORMAL_WEIGHT = 0.7
+RARE_WEIGHT = 0.5
+LOW_WEIGHT = 0.2
 
 
 class PolishNameModel:
+    """
+    Polish Name Model
+    """
+
     _xtrain_dataset: Tensor
     _ytrain_dataset: Tensor
     _train_sampler: WeightedRandomSampler
@@ -34,6 +42,11 @@ class PolishNameModel:
 
     def __init__(self, config: PolishNameConfig):
         self.config = config
+        """
+        Initializes the model with provided configuration
+        
+        :param config: PolishNameConfig
+        """
 
     @property
     def _parameters(self) -> list[Tensor]:
@@ -43,37 +56,107 @@ class PolishNameModel:
         self._prepare_dataset(names)
         self._prepare_parameters()
 
+    def display_dimension(self):
+        """
+        Displays a plot of the model dimensions.
+        """
+
+        plt.figure(figsize=(8, 8))
+        plt.scatter(self._C[:, 0].data, self._C[:, 1].data, s=200)
+        for i in range(self._C.shape[0]):
+            plt.text(
+                self._C[i, 0].item(),
+                self._C[i, 1].item(),
+                self.itos[i],
+                ha="center",
+                va="center",
+                color="white",
+            )
+        plt.grid(True)
+        plt.show()
+
+    def loss_test(self):
+        """
+        Calculates the loss on the test dataset and prints it.
+        """
+
+        loss = self._calculate_loss(self._xtest_dataset, self._ytest_dataset)
+        print(f"Test loss is {loss}")
+
+    def loss_train(self):
+        """
+        Calculates the loss on the train dataset and prints it.
+        """
+
+        loss = self._calculate_loss(self._xtrain_dataset, self._ytrain_dataset)
+        print(f"Train loss is {loss}")
+
+    def loss_dev(self):
+        """
+        Calculates the loss on the dev dataset and prints it.
+        """
+
+        loss = self._calculate_loss(self._xdev_dataset, self._ydev_dataset)
+        print(f"Dev loss is {loss}")
+
     def train_model(self):
+        """
+        Trains the model and keep state on model class.
+        """
+
         lossi = []
         stepi = []
         for i in range(EPOCH):
-            train_loader = DataLoader(
-                TensorDataset(self._xtrain_dataset, self._ytrain_dataset),
-                batch_size=self.config.batch_size,
-                sampler=self._train_sampler,
-            )
-
-            print(f"Epoch {i}/{EPOCH} training with {len(train_loader)} batches")
-            for j, (x, y) in enumerate(train_loader):
-                loss = self._calculate_loss(x, y)
-                for p in self._parameters:
-                    p.grad = None
-                loss.backward()
-                ix = (i * len(train_loader)) + j
-
-                learning_rate = 10 ** -(int((i / EPOCH_SEPARATOR)) + 1)
-                for p in self._parameters:
-                    if p.grad is not None:
-                        p.data += -learning_rate * p.grad
-                    else:
-                        print(f"What the fck {p}")
-                stepi.append(ix)
-                lossi.append(loss.log10().item())
+            self._epoch_training(i, lossi, stepi)
 
         plt.plot(stepi, lossi)
         plt.show()
-        self.train_loss()
         pass
+
+    def predict(self, i):
+        """
+        Predicts a name based on the model state n prints it.
+        :param i: seed modifier
+        """
+
+        g = torch.Generator().manual_seed(123409876 + i)
+        out = []
+        context = [0] * self.config.block_size
+        while True:
+            emb = self._C[torch.tensor([context])]
+            h = torch.tanh(emb.view(1, -1) @ self._W1 + self._b1)
+            logits = h @ self._W2 + self._b2
+            probs = F.softmax(logits, dim=1)
+            ix = torch.multinomial(probs, num_samples=1, generator=g).item()
+            context = context[1:] + [ix]
+            out.append(ix)
+            if ix == 0:
+                break
+
+        print("".join(self.itos[i] for i in out))
+
+    def _epoch_training(self, i, lossi, stepi):
+        train_loader = DataLoader(
+            TensorDataset(self._xtrain_dataset, self._ytrain_dataset),
+            batch_size=self.config.batch_size,
+            sampler=self._train_sampler,
+        )
+        print(f"Epoch {i}/{EPOCH} training with {len(train_loader)} batches")
+        for j, (x, y) in enumerate(train_loader):
+            loss = self._calculate_loss(x, y)
+            for p in self._parameters:
+                p.grad = None
+            loss.backward()
+            ix = (i * len(train_loader)) + j
+
+            learning_rate = 10 ** -(int((i / EPOCH_SEPARATOR)) + 1)
+            for p in self._parameters:
+                if p.grad is not None:
+                    p.data += -learning_rate * p.grad
+                else:
+                    print(f"What the fck {p}")
+            stepi.append(ix)
+            lossi.append(loss.log10().item())
 
     def _calculate_loss(self, x, y):
         emb = self._C[x]
@@ -84,18 +167,6 @@ class PolishNameModel:
         )
         logits = h @ self._W2 + self._b2
         return F.cross_entropy(logits, y)
-
-    def test_loss(self):
-        loss = self._calculate_loss(self._xtest_dataset, self._ytest_dataset)
-        print(f"Test loss is {loss}")
-
-    def train_loss(self):
-        loss = self._calculate_loss(self._xtrain_dataset, self._ytrain_dataset)
-        print(f"Train loss is {loss}")
-
-    def dev_loss(self):
-        loss = self._calculate_loss(self._xdev_dataset, self._ydev_dataset)
-        print(f"Dev loss is {loss}")
 
     def _prepare_dataset(self, names: pd.DataFrame):
         additional_end_of_string = 1
@@ -155,30 +226,13 @@ class PolishNameModel:
     @staticmethod
     def _assign_weight(occurrences, percentiles):
         if occurrences >= percentiles[0.9]:
-            return 1.0
+            return MAIN_WEIGHT
         elif occurrences >= percentiles[0.7]:
-            return 0.7
+            return NORMAL_WEIGHT
         elif occurrences >= percentiles[0.5]:
-            return 0.5
+            return RARE_WEIGHT
         else:
-            return 0.2
-
-    def predict(self, i):
-        g = torch.Generator().manual_seed(123409876 + i)
-        out = []
-        context = [0] * self.config.block_size
-        while True:
-            emb = self._C[torch.tensor([context])]
-            h = torch.tanh(emb.view(1, -1) @ self._W1 + self._b1)
-            logits = h @ self._W2 + self._b2
-            probs = F.softmax(logits, dim=1)
-            ix = torch.multinomial(probs, num_samples=1, generator=g).item()
-            context = context[1:] + [ix]
-            out.append(ix)
-            if ix == 0:
-                break
-
-        print("".join(self.itos[i] for i in out))
+            return LOW_WEIGHT
 
     def _build_dataset(self, names: pd.DataFrame):
         X, Y, weight_context = [], [], []
@@ -196,18 +250,3 @@ class PolishNameModel:
         Y = torch.tensor(Y)
         weight_context = torch.tensor(weight_context)
         return X, Y, WeightedRandomSampler(weight_context, len(weight_context))
-
-    def display_dimension(self):
-        plt.figure(figsize=(8, 8))
-        plt.scatter(self._C[:, 0].data, self._C[:, 1].data, s=200)
-        for i in range(self._C.shape[0]):
-            plt.text(
-                self._C[i, 0].item(),
-                self._C[i, 1].item(),
-                self.itos[i],
-                ha="center",
-                va="center",
-                color="white",
-            )
-        plt.grid(True)
-        plt.show()

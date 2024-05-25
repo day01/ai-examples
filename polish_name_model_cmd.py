@@ -18,9 +18,9 @@ def polish_name_model_cmd(ignore):
     model = PolishNameModel(config)
     model.build_model(male)
     model.train_model()
-    model.train_loss()
-    model.dev_loss()
-    model.test_loss()
+    model.loss_train()
+    model.loss_dev()
+    model.loss_test()
 
     model.display_dimension()
 
