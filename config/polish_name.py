@@ -17,7 +17,7 @@ class PolishNameConfig(BaseModel):
     @staticmethod
     def load_config(file_path: str):
         print(os.getcwd())
-        with open(file_path, 'r') as file:
+        with open(file_path, "r") as file:
             data = yaml.safe_load(file)
         try:
             return PolishNameConfig(**data)

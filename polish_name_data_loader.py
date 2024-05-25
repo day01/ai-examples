@@ -19,11 +19,15 @@ class PolishNameDataLoader:
     @staticmethod
     def download_data(url) -> pd.DataFrame:
         resource = httpx.get(url, follow_redirects=True)
-        data = resource.content.decode('utf-8')
-        data = pd.read_csv(StringIO(data), dtype={'name': str, 'sex': str, 'occurrences': int}, header=0,
-                           names=['name', 'sex', 'occurrences'])
-        data = data[data['name'].str.contains(r'[a-żA-Ż]$', regex=True, na=False)]
-        data['sex'] = data['sex'].replace({'MĘŻCZYZNA': 'male', 'KOBIETA': 'female'})
+        data = resource.content.decode("utf-8")
+        data = pd.read_csv(
+            StringIO(data),
+            dtype={"name": str, "sex": str, "occurrences": int},
+            header=0,
+            names=["name", "sex", "occurrences"],
+        )
+        data = data[data["name"].str.contains(r"[a-żA-Ż]$", regex=True, na=False)]
+        data["sex"] = data["sex"].replace({"MĘŻCZYZNA": "male", "KOBIETA": "female"})
 
         return data
 
@@ -43,7 +47,7 @@ class PolishNameDataLoader:
 
     @staticmethod
     def process_data(data: dict) -> (URL, datetime, URL, datetime):
-        resources = data.get('data', [])
+        resources = data.get("data", [])
 
         latest_male_resource = None
         latest_female_resource = None
@@ -51,38 +55,46 @@ class PolishNameDataLoader:
         latest_female_time = None
 
         for resource in resources:
-            resource_name = resource.get('attributes', {}).get('title', '').lower()
-            resource_time = resource.get('attributes', {}).get('created', '')
+            resource_name = resource.get("attributes", {}).get("title", "").lower()
+            resource_time = resource.get("attributes", {}).get("created", "")
             if resource_time:
-                resource_time = datetime.strptime(resource_time, '%Y-%m-%dT%H:%M:%SZ')
+                resource_time = datetime.strptime(resource_time, "%Y-%m-%dT%H:%M:%SZ")
 
-                if 'male' in resource_name or 'męskich' in resource_name:
+                if "male" in resource_name or "męskich" in resource_name:
                     if latest_male_time is None or resource_time > latest_male_time:
                         latest_male_time = resource_time
                         latest_male_resource = resource
 
-                elif 'female' in resource_name or 'żeńskich' in resource_name:
+                elif "female" in resource_name or "żeńskich" in resource_name:
                     if latest_female_time is None or resource_time > latest_female_time:
                         latest_female_time = resource_time
                         latest_female_resource = resource
 
-        return (URL(latest_male_resource['attributes']['csv_file_url']), latest_male_time,
-                URL(latest_female_resource['attributes']['csv_file_url']), latest_female_time)
+        return (
+            URL(latest_male_resource["attributes"]["csv_file_url"]),
+            latest_male_time,
+            URL(latest_female_resource["attributes"]["csv_file_url"]),
+            latest_female_time,
+        )
 
     def refresh_data(self):
         response = self.get_data(str(self.config.resource))
 
         if response is not None:
-            latest_male_resource, latest_male_time, latest_female_resource, latest_female_time = self.process_data(
-                response)
+            (
+                latest_male_resource,
+                latest_male_time,
+                latest_female_resource,
+                latest_female_time,
+            ) = self.process_data(response)
 
             if latest_male_resource:
                 data = self.download_data(latest_male_resource)
-                self.save_data(data, 'male', latest_male_time)
+                self.save_data(data, "male", latest_male_time)
 
             if latest_female_resource:
                 data = self.download_data(latest_female_resource)
-                self.save_data(data, 'female', latest_female_time)
+                self.save_data(data, "female", latest_female_time)
 
             print("Data downloaded successfully.")
         else:
@@ -99,31 +111,43 @@ class PolishNameDataLoader:
 
         male_data, female_data = None, None
         if male_file:
-            male_data = pd.read_csv(male_file, dtype={'name': str, 'sex': str, 'occurrences': int}, header=0,
-                                    names=['name', 'sex', 'occurrences'])
-            male_data = male_data[male_data.name.str.contains(r'[a-żA-Ż]$', regex=True, na=False)]
+            male_data = pd.read_csv(
+                male_file,
+                dtype={"name": str, "sex": str, "occurrences": int},
+                header=0,
+                names=["name", "sex", "occurrences"],
+            )
+            male_data = male_data[
+                male_data.name.str.contains(r"[a-żA-Ż]$", regex=True, na=False)
+            ]
             # male_data = male_data[male_data.occurrences > 1000]
 
         if female_file:
-            female_data = pd.read_csv(female_file, dtype={'name': str, 'sex': str, 'occurrences': int}, header=0,
-                                      names=['name', 'sex', 'occurrences'])
-            female_data = female_data[female_data.name.str.contains(r'[a-żA-Ż]$', regex=True, na=False)]
+            female_data = pd.read_csv(
+                female_file,
+                dtype={"name": str, "sex": str, "occurrences": int},
+                header=0,
+                names=["name", "sex", "occurrences"],
+            )
+            female_data = female_data[
+                female_data.name.str.contains(r"[a-żA-Ż]$", regex=True, na=False)
+            ]
             female_data = female_data[female_data.occurrences > 1000]
 
         return male_data, female_data
 
     @staticmethod
     def get_timestamp_from_filename(filename):
-        match = re.search(r'\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}', filename)
+        match = re.search(r"\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}", filename)
         if match:
-            timestamp_str = match.group().replace('%', ':')
-            return datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+            timestamp_str = match.group().replace("%", ":")
+            return datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
         else:
             return None
 
     def get_latest_files(self):
-        male_files = glob.glob('./latest_resources/male*.csv')
-        female_files = glob.glob('./latest_resources/female*.csv')
+        male_files = glob.glob("./latest_resources/male*.csv")
+        female_files = glob.glob("./latest_resources/female*.csv")
 
         male_files.sort(key=self.get_timestamp_from_filename)
         female_files.sort(key=self.get_timestamp_from_filename)
@@ -132,4 +156,3 @@ class PolishNameDataLoader:
         latest_female_file = female_files[-1] if female_files else None
 
         return latest_male_file, latest_female_file
-
