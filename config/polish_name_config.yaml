@@ -1,0 +1,7 @@
+resource: https://api.dane.gov.pl/1.4/datasets/1667,lista-imion-wystepujacych-w-rejestrze-pesel-osoby-zyjace/resources
+block_size: 3
+embedding_vectors: 10
+hidden_layers: 100
+seed: 1088807
+max_steps: 300000
+batch_size: 32
