@@ -6,7 +6,6 @@ from io import StringIO
 
 import httpx
 import pandas as pd
-import torch
 from httpx import URL
 
 from config.polish_name import PolishNameConfig
