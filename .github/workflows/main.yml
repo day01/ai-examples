@@ -1,4 +1,4 @@
-name: Build and Run Docker
+name: Build n publish app
 
 on:
   workflow_dispatch:
@@ -9,6 +9,7 @@ on:
 
 jobs:
   build:
+    permissions: write-all
     runs-on: ubuntu-latest
 
     steps:
